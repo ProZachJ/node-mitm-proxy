@@ -64,7 +64,6 @@ var handle_request = function(that, request, response, type) {
 
   var proxy_request = (req_url.protocol == "https:" ? https : http).request(request_options, function(proxy_response) {
     if(processor) processor.emit("response", proxy_response);
-
     proxy_response.on("data", function(d) {
       response.write(d);
       if(that.options.proxy_write) proxy_writter.write(d);
@@ -102,14 +101,16 @@ var handle_request = function(that, request, response, type) {
 
   request.on('close', function() {
     if(processor) processor.emit("request_close");
-    proxy_request.connection.end();
+    if(proxy_request.connection){
+      proxy_request.connection.end();
+    }
+    else{ console.log('Request Connection Undefined'); }
   })
 
   request.on('error', function(exception) { 
     response.end(); 
   });
 }
-
 
 module.exports = function(proxy_options, processor_class) {
   this.options = process_options(proxy_options);
@@ -126,11 +127,8 @@ module.exports = function(proxy_options, processor_class) {
   });
 
   mitm_server.addListener('error', function() {
-    sys.log("error on server?")
+    sys.log("error on mitim server?")
   })
-
-  mitm_server.listen(this.options.mitm_port);
-  if(this.options.verbose) console.log('https man-in-the-middle proxy server'.blue + ' started '.green.bold + 'on port '.blue + (""+this.options.mitm_port).yellow);
 
   var server = http.createServer(function(request, response) {
     handle_request(that, request, response, "http");
@@ -141,7 +139,7 @@ module.exports = function(proxy_options, processor_class) {
     var proxy = net.createConnection(that.options.mitm_port, 'localhost');
 
     proxy.on('connect', function() {
-      socket.write( "HTTP/1.0 200 Connection established\r\nProxy-agent: Netscape-Proxy/1.1\r\n\r\n"); 
+      socket.write( "HTTP/1.0 200 Connection established\r\nProxy-agent: Netscape-Proxy/1.1\r\n\r\n");
     });
 
     // connect pipes
@@ -158,10 +156,22 @@ module.exports = function(proxy_options, processor_class) {
     socket.on('error',function()  { proxy.end()       });
   });
 
-  server.addListener('error', function() {
-    sys.log("error on server?")
+  server.addListener('error', function(err) {
+    sys.log("error on server?"+err) ;
   })
 
-  server.listen(this.options.proxy_port);
-  if(this.options.verbose) console.log('http proxy server '.blue + 'started '.green.bold + 'on port '.blue + (""+this.options.proxy_port).yellow);
+
+  this.startServer = function(){
+    mitm_server.listen(this.options.mitm_port);
+    if(this.options.verbose) sys.log('https man-in-the-middle proxy server'.blue + ' started '.green.bold + 'on port '.blue + (""+this.options.mitm_port).yellow);
+    server.listen(this.options.proxy_port);
+    if(this.options.verbose) sys.log('http proxy server '.blue + 'started '.green.bold + 'on port '.blue + (""+this.options.proxy_port).yellow);
+  }
+
+  this.stopServer = function(){
+    mitm_server.close();
+    server.close();
+  }
+
+  return this;
 }
